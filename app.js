@@ -14,7 +14,7 @@ app.set("view engine", "ejs");
 app.use(bodyParser.urlencoded({extended: true}));
 
 // mongo connection
-mongoose.connect("mongodb+srv://admin-pablo:" + process.env.DB_PASS + "@cluster0.gilp6.mongodb.net/userDB", {useNewUrlParser: true, useUnifiedTopology: true })
+mongoose.connect("mongodb+srv://admin-pablo:" + process.env.DB_PASS + process.env.DB_CLUSTER + process.env.DB_NAME , {useNewUrlParser: true, useUnifiedTopology: true })
 // mongo configuration (schema & model)
 const userSchema = new mongoose.Schema({
   user: String,
