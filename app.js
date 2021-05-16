@@ -7,6 +7,7 @@ const mongoose = require('mongoose');
 // level 3 const md5 = require('md5');
 // level 4 const bcrypt = require('bcrypt');
 // level 4 const saltRounds = 10;
+// level 5 session & passport & cookies
 const session = require('express-session');
 const passport = require('passport');
 const passportLocalMongoose = require('passport-local-mongoose');
