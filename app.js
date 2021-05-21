@@ -33,18 +33,28 @@ mongoose.connect("mongodb+srv://admin-pablo:" + process.env.DB_PASS + process.en
 mongoose.set("useCreateIndex", true);
 // mongo configuration (schema & model)
 const userSchema = new mongoose.Schema ({
+  displayName: String,
+  provider: String,
   email: String,
   password: String,
   googleId: String,
   facebookId: String,
   secret: String
 });
-
+const taskSchema = new mongoose.Schema ({
+  task: String,
+  userId: String,
+  duration: String,
+  today: Boolean,
+  tplus: Boolean,
+  location: String
+});
 //L5
 userSchema.plugin(passportLocalMongoose);
 userSchema.plugin(findOrCreate);
 
 const User = new mongoose.model("User", userSchema);
+const Task = new mongoose.model("Task", taskSchema);
 
 //Level 5
 passport.use(User.createStrategy());
@@ -64,11 +74,12 @@ passport.deserializeUser(function(id, done) {
 passport.use(new GoogleStrategy({
     clientID: process.env.CLIENT_ID,
     clientSecret: process.env.CLIENT_SECRET ,
-    callbackURL: "http://localhost:3000/auth/google/secrets",
+    callbackURL: "http://localhost:3000/auth/google/tasks",
     userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"
   },
+
   function(accessToken, refreshToken, profile, cb) {
-    User.findOrCreate({ googleId: profile.id }, function (err, user) {
+    User.findOrCreate({ googleId: profile.id, displayName: profile.displayName, provider: profile.provider }, function (err, user) {
       return cb(err, user);
     });
   }
@@ -84,7 +95,7 @@ passport.use(new GoogleStrategy({
 passport.use(new Strategy({
     clientID: process.env.FACEBOOK_CLIENT_ID,
     clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
-    callbackURL: 'http://localhost:3000/auth/facebook/secrets'
+    callbackURL: 'http://localhost:3000/auth/facebook/tasks'
   },
   function(accessToken, refreshToken, profile, cb) {
     // In this example, the user's Facebook profile is supplied as the user
@@ -92,7 +103,8 @@ passport.use(new Strategy({
     // be associated with a user record in the application's database, which
     // allows for account linking and authentication with other identity
     // providers.
-    User.findOrCreate({ facebookId: profile.id }, function (err, user) {
+
+    User.findOrCreate({ facebookId: profile.id, displayName: profile.displayName, provider: profile.provider }, function (err, user) {
       return cb(err, user);
     });
     // return cb(null, profile);
@@ -106,21 +118,38 @@ app.get("/", (req,res)=>{
 app.get('/auth/google',
   passport.authenticate('google', { scope: ['profile'] }));
 
-app.get('/auth/google/secrets',
+app.get('/auth/google/tasks',
   passport.authenticate('google', { failureRedirect: '/login' }),
   function(req, res) {
-    // Successful authentication, redirect home.
-    res.redirect('/secrets');
+    // Successful authentication, render tasks.
+    Task.find({"userId": req.user.id}, (err,foundTask)=>{
+      if (err) {
+        console.log(err);
+      } else {
+        if (foundTask) {
+          res.render("tasks",  {userLogged: req.user, userWithTask: foundTask})
+        }
+      }
+    })
   });
 //**********************facebook****
 app.get('/auth/facebook',
   passport.authenticate('facebook' ));
 
-app.get('/auth/facebook/secrets',
+app.get('/auth/facebook/tasks',
   passport.authenticate('facebook', { failureRedirect: '/login' }),
   function(req, res) {
-    // Successful authentication, redirect home.
-    res.redirect('/secrets');
+    // Successful authentication, render tasks.
+    Task.find({"userId": req.user.id}, (err,foundTask)=>{
+      if (err) {
+        console.log(err);
+      } else {
+        if (foundTask) {
+          res.render("tasks",  {userLogged: req.user, userWithTask: foundTask})
+        }
+      }
+    })
+    // res.render('tasks', {userLogged: req.user });
   });
   //*******
 app.get("/logout", (req,res)=>{
@@ -128,15 +157,15 @@ app.get("/logout", (req,res)=>{
   res.redirect("/");
 });
 /////////////////////////// ROUTE SECRETS //////////////////
-app.route("/secrets")
+app.route("/tasks")
 //// GET
 .get((req,res)=>{
-  User.find({"secret": {$ne:null}}, (err,foundUsers)=>{
+  Task.find({"userId": req.user.id}, (err,foundTask)=>{
     if (err) {
       console.log(err);
     } else {
-      if (foundUsers) {
-        res.render("secrets", {userWithSecrets: foundUsers})
+      if (foundTask) {
+        res.render("tasks", {userWithTask: foundTask})
       }
     }
 })
@@ -150,7 +179,7 @@ app.route("/login")
 //// POST
 .post((req,res)=>{
   const user = new User({
-    username: req.body.username,
+    displayName: req.body.username,
     password: req.body.password
   })
   req.login(user, (err)=>{
@@ -158,8 +187,12 @@ app.route("/login")
       console.log(err);
       res.redirect("/register");
     } else {
+      //authenticate user
       passport.authenticate("local")(req,res,()=>{
-        res.redirect("/secrets");
+        //find task
+        Task.find( (err,foundTasks)=>{
+          res.render("tasks", {userLogged: req.user, tasks: foundTasks});
+        })
       });
     }
   })
@@ -173,17 +206,19 @@ app.route("/register")
 })
 //// POST
 .post((req,res)=>{
-  User.register({username: req.body.username}, req.body.password, (err,user)=>{
+  User.register({username: req.body.username,displayName: req.body.username, provider: 'local'}, req.body.password, (err,user)=>{
     if(err) {
       console.log(err);
       res.redirect("/register");
     } else {
       passport.authenticate("local")(req,res,()=>{
-        res.redirect("/secrets");
+        res.redirect("/tasks");
       });
     }
   })
 });
+//////////////////////// ROUTE SUBMIT //////////////////
+
 app.get("/submit", (req,res)=>{
   if(req.isAuthenticated()){
     res.render("submit")
@@ -192,21 +227,26 @@ app.get("/submit", (req,res)=>{
   }
 });
 app.post("/submit", (req,res)=>{
-  const submittedSecret = req.body.secret
-  User.findById(req.user.id, (err,foundUser)=>{
+  const submittedTask = req.body.task
+  const userLogged = req.user.id
+  console.log(submittedTask + "  -  " + userLogged);
+  //create new task
+  const task = new Task({
+    task: submittedTask,
+    userId: userLogged
+  });
+  task.save();
+  Task.find({"userId": req.user.id}, (err,foundTask)=>{
     if (err) {
       console.log(err);
     } else {
-      if (foundUser){
-        foundUser.secret = submittedSecret;
-        foundUser.save(()=>{
-          res.redirect("/secrets")
-        });
+      if (foundTask) {
+        res.render("tasks",  {userLogged: req.user, userWithTask: foundTask})
       }
     }
-  });
+  })
+  // res.render("tasks", {userLogged: req.user.dispçlayName})
 });
-
 
 app.listen(3000, ()=>{
   console.log("Server listening on port 3000");
