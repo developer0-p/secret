@@ -32,6 +32,15 @@ app.use(passport.session());
 mongoose.connect("mongodb+srv://admin-pablo:" + process.env.DB_PASS + process.env.DB_CLUSTER + process.env.DB_NAME , {useNewUrlParser: true, useUnifiedTopology: true })
 mongoose.set("useCreateIndex", true);
 // mongo configuration (schema & model)
+
+// ************************ ESQUEMAS ***********************
+const taskSchema = new mongoose.Schema ({
+  task: String,
+  duration: String,
+  today: Boolean,
+  tplus: Boolean,
+  location: String
+});
 const userSchema = new mongoose.Schema ({
   displayName: String,
   provider: String,
@@ -39,16 +48,10 @@ const userSchema = new mongoose.Schema ({
   password: String,
   googleId: String,
   facebookId: String,
-  secret: String
+  tasks: [taskSchema]
 });
-const taskSchema = new mongoose.Schema ({
-  task: String,
-  userId: String,
-  duration: String,
-  today: Boolean,
-  tplus: Boolean,
-  location: String
-});
+
+// ************************ FIN ESQUEMAS ***********************
 //L5
 userSchema.plugin(passportLocalMongoose);
 userSchema.plugin(findOrCreate);
@@ -70,7 +73,7 @@ passport.deserializeUser(function(id, done) {
     done(err, user);
   });
 });
-
+// ************************ LOGIN WITH GOOGLE **********************
 passport.use(new GoogleStrategy({
     clientID: process.env.CLIENT_ID,
     clientSecret: process.env.CLIENT_SECRET ,
@@ -85,6 +88,7 @@ passport.use(new GoogleStrategy({
   }
 ));
 //************************************
+// ************************ LOGIN WITH FACEBOOK **********************
 // Configure the Facebook strategy for use by Passport.
 //
 // OAuth 2.0-based strategies require a `verify` function which receives the
@@ -122,12 +126,13 @@ app.get('/auth/google/tasks',
   passport.authenticate('google', { failureRedirect: '/login' }),
   function(req, res) {
     // Successful authentication, render tasks.
-    Task.find({"userId": req.user.id}, (err,foundTask)=>{
+    Task.find({"userId": req.user.id}, (err,foundTasks)=>{
       if (err) {
         console.log(err);
       } else {
-        if (foundTask) {
-          res.render("tasks",  {userLogged: req.user, userWithTask: foundTask})
+        if (foundTasks) {
+         res.render("tasks",  {username: req.user, userWithTask: foundTasks})
+        // res.render("list", {listTitle: "Today", newListItems: foundTasks});
         }
       }
     })
@@ -145,7 +150,7 @@ app.get('/auth/facebook/tasks',
         console.log(err);
       } else {
         if (foundTask) {
-          res.render("tasks",  {userLogged: req.user, userWithTask: foundTask})
+          res.render("tasks",  {username: req.user, userWithTask: foundTask})
         }
       }
     })
@@ -165,7 +170,7 @@ app.route("/tasks")
       console.log(err);
     } else {
       if (foundTask) {
-        res.render("tasks", {userWithTask: foundTask})
+        res.render("tasks", {username: req.user, userWithTask: foundTask})
       }
     }
 })
@@ -191,7 +196,7 @@ app.route("/login")
       passport.authenticate("local")(req,res,()=>{
         //find task
         Task.find( (err,foundTasks)=>{
-          res.render("tasks", {userLogged: req.user, tasks: foundTasks});
+          res.render("tasks", {username: req.user, userWithTask: foundTasks});
         })
       });
     }
@@ -206,7 +211,7 @@ app.route("/register")
 })
 //// POST
 .post((req,res)=>{
-  User.register({username: req.body.username,displayName: req.body.username, provider: 'local'}, req.body.password, (err,user)=>{
+  User.register({username: req.body.username, displayName: req.body.username, provider: 'local'}, req.body.password, (err,user)=>{
     if(err) {
       console.log(err);
       res.redirect("/register");
@@ -241,7 +246,7 @@ app.post("/submit", (req,res)=>{
       console.log(err);
     } else {
       if (foundTask) {
-        res.render("tasks",  {userLogged: req.user, userWithTask: foundTask})
+        res.redirect("/tasks")
       }
     }
   })
